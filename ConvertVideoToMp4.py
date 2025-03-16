@@ -32,15 +32,15 @@ class VideoConverter:
         self.window = window
         self.original_files = []  # 用于存储所有原始文件路径
 
-    def convert_video(self, input_path, output_path):
+    def convert_video(self, input_path, output_path, codec, preset, crf):
         # 调用 FFmpeg 转换
         command = [
             FFMPEG_PATH,
             "-i", input_path,
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
-            "-c:a", "aac",
+            "-c:v", codec,          # 编码模式（h264 或 h265）
+            "-preset", preset,      # 平衡速度与质量
+            "-crf", str(crf),       # 画质控制
+            "-c:a", "aac",          # 音频编码
             output_path
         ]
         
@@ -66,7 +66,7 @@ class VideoConverter:
         except subprocess.CalledProcessError:
             return None
 
-    def batch_convert(self, target_folder):
+    def batch_convert(self, target_folder, codec, preset, crf):
         # 递归遍历文件夹及其子文件夹
         video_files = []
         for root, _, files in os.walk(target_folder):
@@ -106,7 +106,7 @@ class VideoConverter:
 
             try:
                 # 转换视频
-                self.convert_video(input_path, output_path)
+                self.convert_video(input_path, output_path, codec, preset, crf)
                 # 记录原始文件路径
                 self.original_files.append(input_path)
                 
@@ -139,16 +139,36 @@ def main():
     # 创建主窗口
     window = tk.Tk()
     window.title("视频转换工具")
-    window.geometry("500x300")
-    
+    window.geometry("400x300")
 
+    # 编码模式选择
+    codec_label = tk.Label(window, text="编码模式:")
+    codec_label.grid(row=0, column=0, padx=10, pady=10)
+    codec_var = tk.StringVar(value="libx264")  # 默认 h264
+    codec_menu = ttk.Combobox(window, textvariable=codec_var, values=["libx264", "libx265"])
+    codec_menu.grid(row=0, column=1, padx=10, pady=10)
+
+    # 平衡速度与质量选项
+    preset_label = tk.Label(window, text="速度与质量:")
+    preset_label.grid(row=1, column=0, padx=10, pady=10)
+    preset_var = tk.StringVar(value="fast")  # 默认 fast
+    preset_menu = ttk.Combobox(window, textvariable=preset_var, values=["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"])
+    preset_menu.grid(row=1, column=1, padx=10, pady=10)
+
+    # 画质控制
+    crf_label = tk.Label(window, text="画质 (CRF):")
+    crf_label.grid(row=2, column=0, padx=10, pady=10)
+    crf_var = tk.IntVar(value=23)  # 默认 23
+    crf_entry = tk.Entry(window, textvariable=crf_var)
+    crf_entry.grid(row=2, column=1, padx=10, pady=10)
+    
     # 添加进度条
     progress_bar = ttk.Progressbar(window, orient="horizontal", length=300, mode="determinate")
-    progress_bar.pack(pady=20)
+    progress_bar.grid(row=3, column=0, columnspan=2, padx=50, pady=20)
 
     # 添加状态标签
     status_label = tk.Label(window, text="等待转换...", font=("Arial", 12))
-    status_label.pack(pady=10)
+    status_label.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
 
     # 添加按钮
     def start_conversion():
@@ -158,12 +178,12 @@ def main():
             if not target_folder:
                 return
             converter = VideoConverter(progress_bar, status_label, window)
-            converter.batch_convert(target_folder)
+            converter.batch_convert(target_folder, codec_var.get(), preset_var.get(), crf_var.get())
         finally:
             start_button.config(state=tk.NORMAL)  # 恢复按钮
 
     start_button = tk.Button(window, text="开始转换", command=start_conversion)
-    start_button.pack(pady=10)
+    start_button.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
 
     # 运行主循环
     window.mainloop()
