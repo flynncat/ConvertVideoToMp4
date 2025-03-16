@@ -139,7 +139,7 @@ def main():
     # 创建主窗口
     window = tk.Tk()
     window.title("视频转换工具")
-    window.geometry("400x200")
+    window.geometry("500x300")
     
 
     # 添加进度条
