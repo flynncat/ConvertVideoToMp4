@@ -26,13 +26,23 @@ else:
     FFPROBE_PATH = FFMPEG_PATH.replace("ffmpeg", "ffprobe")
 
 class VideoConverter:
-    def __init__(self, progress_bar, status_label, window):
+    def __init__(self, progress_bar, current_progress_bar,status_label, window):
         self.progress_bar = progress_bar
         self.status_label = status_label
+        self.current_progress_bar = current_progress_bar
         self.window = window
         self.original_files = []  # 用于存储所有原始文件路径
 
     def convert_video(self, input_path, output_path, codec, preset, crf):
+        # 获取视频总时长
+        duration = self.get_video_duration(input_path)
+        if duration is None:
+            raise Exception("无法获取视频时长")
+
+        # 初始化当前文件进度条
+        self.current_progress_bar["value"] = 0
+        self.current_progress_bar["maximum"] = duration
+        
         # 调用 FFmpeg 转换
         command = [
             FFMPEG_PATH,
@@ -44,12 +54,29 @@ class VideoConverter:
             output_path
         ]
         
-        try:
-            subprocess.run(command, check=True)
-        except subprocess.CalledProcessError as e:
-            messagebox.showerror("错误", f"转换失败: {str(e)}")
-        except FileNotFoundError:
-            messagebox.showerror("错误", f"未找到 FFmpeg，请检查路径配置: {FFMPEG_PATH}")
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, universal_newlines=True)
+        # 实时解析 FFmpeg 输出
+        while True:
+            line = process.stderr.readline()
+            if line == "" and process.poll() is not None:
+                break
+
+            # 解析时间进度
+            if "time=" in line:
+                time_str = line.split("time=")[1].split(" ")[0]
+                current_time = self.time_to_seconds(time_str)
+                self.current_progress_bar["value"] = current_time
+                self.current_progress_bar.update()
+
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, command)
+        
+        #try:
+           # subprocess.run(command, check=True)
+        #except subprocess.CalledProcessError as e:
+            #messagebox.showerror("错误", f"转换失败: {str(e)}")
+        #except FileNotFoundError:
+            #messagebox.showerror("错误", f"未找到 FFmpeg，请检查路径配置: {FFMPEG_PATH}")
 
     def get_video_duration(self, input_path):
         # 获取视频总时长（秒）
@@ -62,10 +89,31 @@ class VideoConverter:
         ]
         try:
             output = subprocess.check_output(command, stderr=subprocess.STDOUT)
+            output = output.decode("utf-8").strip()  # 解码并去除空白字符
+            if output.lower() == "n/a" or not output:
+                raise ValueError(f"无效的视频时长: {output}")
             return float(output)
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
+            print(f"FFprobe 错误: {e.output}")
+            return None
+        except ValueError as e:
+            print(f"视频时长解析失败: {str(e)}")
             return None
 
+    def time_to_seconds(self, time_str):
+        # 将时间字符串（HH:MM:SS.ms 或 MM:SS.ms 或 SS.ms）转换为秒
+        parts = time_str.split(":")
+        if len(parts) == 3:  # HH:MM:SS
+            h, m, s = parts
+            return int(h) * 3600 + int(m) * 60 + float(s)
+        elif len(parts) == 2:  # MM:SS
+            m, s = parts
+            return int(m) * 60 + float(s)
+        elif len(parts) == 1:  # SS
+            return float(parts[0])
+        else:
+            raise ValueError(f"无法解析时间格式: {time_str}")
+    
     def batch_convert(self, target_folder, codec, preset, crf):
         # 递归遍历文件夹及其子文件夹
         video_files = []
@@ -139,7 +187,7 @@ def main():
     # 创建主窗口
     window = tk.Tk()
     window.title("视频转换工具")
-    window.geometry("400x300")
+    window.geometry("400x320")
 
     # 编码模式选择
     codec_label = tk.Label(window, text="编码模式:")
@@ -162,13 +210,21 @@ def main():
     crf_entry = tk.Entry(window, textvariable=crf_var)
     crf_entry.grid(row=2, column=1, padx=10, pady=10)
     
-    # 添加进度条
-    progress_bar = ttk.Progressbar(window, orient="horizontal", length=300, mode="determinate")
-    progress_bar.grid(row=3, column=0, columnspan=2, padx=50, pady=20)
+    # 添加总文件进度条
+    progress_bar_label = tk.Label(window, text="总文件进度:")
+    progress_bar_label.grid(row=3,column=0, padx=10, pady=10)
+    progress_bar = ttk.Progressbar(window, orient="horizontal", length=260, mode="determinate")
+    progress_bar.grid(row=3, column=1, columnspan=2, padx=10, pady=10)
+
+    # 当前文件进度条
+    current_progress_label = tk.Label(window, text="当前文件进度:")
+    current_progress_label.grid(row=4, column=0, padx=10, pady=10)
+    current_progress_bar = ttk.Progressbar(window, orient="horizontal", length=260, mode="determinate")
+    current_progress_bar.grid(row=4, column=1, padx=10, pady=10)
 
     # 添加状态标签
     status_label = tk.Label(window, text="等待转换...", font=("Arial", 12))
-    status_label.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+    status_label.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
 
     # 添加按钮
     def start_conversion():
@@ -177,13 +233,13 @@ def main():
             target_folder = select_folder()
             if not target_folder:
                 return
-            converter = VideoConverter(progress_bar, status_label, window)
+            converter = VideoConverter(progress_bar, current_progress_bar, status_label, window)
             converter.batch_convert(target_folder, codec_var.get(), preset_var.get(), crf_var.get())
         finally:
             start_button.config(state=tk.NORMAL)  # 恢复按钮
 
     start_button = tk.Button(window, text="开始转换", command=start_conversion)
-    start_button.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+    start_button.grid(row=6, column=0, columnspan=2, padx=10, pady=10)
 
     # 运行主循环
     window.mainloop()
