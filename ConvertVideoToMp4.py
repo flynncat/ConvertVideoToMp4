@@ -101,6 +101,8 @@ class VideoConverter:
             return None
 
     def time_to_seconds(self, time_str):
+        if(time_str == "N/A"):
+            return print(f"无法解析时间格式: {time_str}") #临时跳过的方案，防止苹果预览文件及部分文件转换时时间获取异常的情况
         # 将时间字符串（HH:MM:SS.ms 或 MM:SS.ms 或 SS.ms）转换为秒
         parts = time_str.split(":")
         if len(parts) == 3:  # HH:MM:SS
